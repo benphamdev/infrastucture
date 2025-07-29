@@ -132,11 +132,12 @@ jobs:
         uses: actions/download-artifact@v4
         with:
           name: glue-job-artifact
-          path: ${GITHUB_WORKSPACE}/${CODE_SCRIPTS}
+          path: ${{ github.workspace }}/${{ env.CODE_SCRIPTS }}
 
       - name: Extract Artifacts
         # if: ${{ steps.should_run.outputs.run == 'true' }}
         run: |
+          mkdir -p ${GITHUB_WORKSPACE}/${CODE_SCRIPTS}
           cd ${GITHUB_WORKSPACE}/${CODE_SCRIPTS}
           ls -R
       - name: Deploy Glue Jobs to S3
