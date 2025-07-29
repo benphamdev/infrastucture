@@ -104,10 +104,13 @@ jobs:
     if: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'push' && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/staging') }}
     env:
       ENVIRONMENT: rnd
-      S3_BUCKET: ${{ env.S3_BUCKET_PREFIX_RND }}
-      ACCOUNT_ID: ${{ env.AWS_ACCOUNT_ID_RND }}
-      ROLE_ARN: arn:aws:iam::${{ env.AWS_ACCOUNT_ID_RND }}:role/${{ env.AWS_ROLE_NAME }}
     steps:
+      - name: Set environment-specific variables
+        run: |
+          echo "S3_BUCKET=${{ env.S3_BUCKET_PREFIX_RND }}" >> $GITHUB_ENV
+          echo "ACCOUNT_ID=${{ env.AWS_ACCOUNT_ID_RND }}" >> $GITHUB_ENV
+          echo "ROLE_ARN=arn:aws:iam::${{ env.AWS_ACCOUNT_ID_RND }}:role/${{ env.AWS_ROLE_NAME }}" >> $GITHUB_ENV
+      
       - name: Check if should run
         id: should_run
         run: |
@@ -132,8 +135,8 @@ jobs:
           secret: ${{ github.TOKEN }}
           approvers: benphamdev
           minimum-approvals: 1
-          issue-title: "Approval needed for Glue Job deployment to ${{ matrix.environment }}"
-          issue-body: "Please approve or deny the deployment of Glue Jobs to ${{ matrix.environment }} environment."
+          issue-title: "Approval needed for Glue Job deployment to ${{ env.ENVIRONMENT }}"
+          issue-body: "Please approve or deny the deployment of Glue Jobs to ${{ env.ENVIRONMENT }} environment."
           exclude-workflow-initiator-as-approver: false
           timeout-minutes: 60
 
@@ -151,7 +154,7 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Assume AWS Role for ${{ matrix.environment }}
+      - name: Assume AWS Role for ${{ env.ENVIRONMENT }}
         if: ${{ steps.should_run.outputs.run == 'true' }}
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -159,7 +162,7 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
           role-to-assume: ${{ env.ROLE_ARN }}
-          role-session-name: HarmonyGlueDeployment-${{ matrix.environment }}
+          role-session-name: HarmonyGlueDeployment-${{ env.ENVIRONMENT }}
           role-duration-seconds: 3600
 
       - name: Verify AWS Identity After Role Assumption
@@ -195,8 +198,8 @@ jobs:
         run: |
           cd ${TERRAFORM_DIR}
           # Kiểm tra nếu có thư mục tfenvs
-          if [ -d "tfenvs/${{ matrix.environment }}" ]; then
-            terraform init -backend-config="tfenvs/${{ matrix.environment }}/backend.hcl" -reconfigure
+          if [ -d "tfenvs/${{ env.ENVIRONMENT }}" ]; then
+            terraform init -backend-config="tfenvs/${{ env.ENVIRONMENT }}/backend.hcl" -reconfigure
           else
             terraform init -reconfigure
           fi
@@ -205,8 +208,8 @@ jobs:
         run: |
           cd ${TERRAFORM_DIR}
           # Kiểm tra nếu có file tfvars
-          if [ -f "tfenvs/${{ matrix.environment }}/terraform.tfvars" ]; then
-            terraform plan -var-file="tfenvs/${{ matrix.environment }}/terraform.tfvars" -out=tfplan
+          if [ -f "tfenvs/${{ env.ENVIRONMENT }}/terraform.tfvars" ]; then
+            terraform plan -var-file="tfenvs/${{ env.ENVIRONMENT }}/terraform.tfvars" -out=tfplan
           else
             terraform plan -out=tfplan
           fi
@@ -219,26 +222,26 @@ jobs:
       - name: Create Deployment Directory
         if: ${{ steps.should_run.outputs.run == 'true' }}
         run: |
-          mkdir -p ${GITHUB_WORKSPACE}/deploy/${{ matrix.environment }}
+          mkdir -p ${GITHUB_WORKSPACE}/deploy/${{ env.ENVIRONMENT }}
       - name: Download Glue Job Artifact
         if: ${{ steps.should_run.outputs.run == 'true' }}
         uses: actions/download-artifact@v4
         with:
           name: glue-job-artifact
-          path: ${GITHUB_WORKSPACE}/deploy/${{ matrix.environment }}
+          path: ${GITHUB_WORKSPACE}/deploy/${{ env.ENVIRONMENT }}
 
       - name: Extract Artifacts
         if: ${{ steps.should_run.outputs.run == 'true' }}
         run: |
-          cd ${GITHUB_WORKSPACE}/deploy/${{ matrix.environment }}
+          cd ${GITHUB_WORKSPACE}/deploy/${{ env.ENVIRONMENT }}
           ls -R
       - name: Deploy Glue Jobs to S3
         if: ${{ steps.should_run.outputs.run == 'true' }}
         run: |
-          echo "Deploying Glue Jobs to ${{ matrix.environment }} environment (Account: ${{ env.ACCOUNT_ID }})"
-          aws s3 sync ${GITHUB_WORKSPACE}/deploy/${{ matrix.environment }}/ ${{ env.S3_BUCKET }}/scripts/ --delete
+          echo "Deploying Glue Jobs to ${{ env.ENVIRONMENT }} environment (Account: ${{ env.ACCOUNT_ID }})"
+          aws s3 sync ${GITHUB_WORKSPACE}/deploy/${{ env.ENVIRONMENT }}/ ${{ env.S3_BUCKET }}/scripts/ --delete
           # Register/update Glue Jobs
-          cd ${GITHUB_WORKSPACE}/deploy/${{ matrix.environment }}/
+          cd ${GITHUB_WORKSPACE}/deploy/${{ env.ENVIRONMENT }}/
           # Find all Python script files
           for script in $(find . -name "*.py"); do
             script_name=$(basename "$script" .py)
@@ -246,8 +249,8 @@ jobs:
             # Create or update Glue job
             echo "Registering Glue job: $script_name"
             aws glue create-job \
-              --name "$script_name-${{ matrix.environment }}" \
-              --role "AWSGlueServiceRole-${{ matrix.environment }}" \
+              --name "$script_name-${{ env.ENVIRONMENT }}" \
+              --role "AWSGlueServiceRole-${{ env.ENVIRONMENT }}" \
               --command "Name=glueetl,ScriptLocation=$script_path" \
               --max-retries 3 \
               --timeout 60 \
@@ -258,10 +261,10 @@ jobs:
                 "--enable-metrics": "true",
                 "--enable-continuous-cloudwatch-log": "true",
                 "--job-language": "python",
-                "--environment": "${{ matrix.environment }}"
+                "--environment": "${{ env.ENVIRONMENT }}"
               }' || aws glue update-job \
-              --job-name "$script_name-${{ matrix.environment }}" \
-              --job-update "Command={Name=glueetl,ScriptLocation=$script_path},Role=AWSGlueServiceRole-${{ matrix.environment }},MaxRetries=3,Timeout=60,GlueVersion=3.0,WorkerType=G.1X,NumberOfWorkers=10,DefaultArguments={\"--enable-metrics\": \"true\", \"--enable-continuous-cloudwatch-log\": \"true\", \"--job-language\": \"python\", \"--environment\": \"${{ matrix.environment }}\"}"
+              --job-name "$script_name-${{ env.ENVIRONMENT }}" \
+              --job-update "Command={Name=glueetl,ScriptLocation=$script_path},Role=AWSGlueServiceRole-${{ env.ENVIRONMENT }},MaxRetries=3,Timeout=60,GlueVersion=3.0,WorkerType=G.1X,NumberOfWorkers=10,DefaultArguments={\"--enable-metrics\": \"true\", \"--enable-continuous-cloudwatch-log\": \"true\", \"--job-language\": \"python\", \"--environment\": \"${{ env.ENVIRONMENT }}\"}"
           done
 
   deploy-to-dev:
@@ -271,10 +274,13 @@ jobs:
     if: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'push' && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/staging') }}
     env:
       ENVIRONMENT: dev
-      S3_BUCKET: ${{ env.S3_BUCKET_PREFIX_DEV }}
-      ACCOUNT_ID: ${{ env.AWS_ACCOUNT_ID_DEV }}
-      ROLE_ARN: arn:aws:iam::${{ env.AWS_ACCOUNT_ID_DEV }}:role/${{ env.AWS_ROLE_NAME }}
     steps:
+      - name: Set environment-specific variables
+        run: |
+          echo "S3_BUCKET=${{ env.S3_BUCKET_PREFIX_DEV }}" >> $GITHUB_ENV
+          echo "ACCOUNT_ID=${{ env.AWS_ACCOUNT_ID_DEV }}" >> $GITHUB_ENV
+          echo "ROLE_ARN=arn:aws:iam::${{ env.AWS_ACCOUNT_ID_DEV }}:role/${{ env.AWS_ROLE_NAME }}" >> $GITHUB_ENV
+      
       - name: Check if should run
         id: should_run
         run: |
@@ -318,7 +324,7 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Assume AWS Role for ${{ matrix.environment }}
+      - name: Assume AWS Role for ${{ env.ENVIRONMENT }}
         if: ${{ steps.should_run.outputs.run == 'true' }}
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -326,7 +332,7 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
           role-to-assume: ${{ env.ROLE_ARN }}
-          role-session-name: HarmonyGlueDeployment-${{ matrix.environment }}
+          role-session-name: HarmonyGlueDeployment-${{ env.ENVIRONMENT }}
           role-duration-seconds: 3600
 
       - name: Verify AWS Identity After Role Assumption
@@ -362,8 +368,8 @@ jobs:
         run: |
           cd ${TERRAFORM_DIR}
           # Kiểm tra nếu có thư mục tfenvs
-          if [ -d "tfenvs/${{ matrix.environment }}" ]; then
-            terraform init -backend-config="tfenvs/${{ matrix.environment }}/backend.hcl" -reconfigure
+          if [ -d "tfenvs/${{ env.ENVIRONMENT }}" ]; then
+            terraform init -backend-config="tfenvs/${{ env.ENVIRONMENT }}/backend.hcl" -reconfigure
           else
             terraform init -reconfigure
           fi
@@ -372,8 +378,8 @@ jobs:
         run: |
           cd ${TERRAFORM_DIR}
           # Kiểm tra nếu có file tfvars
-          if [ -f "tfenvs/${{ matrix.environment }}/terraform.tfvars" ]; then
-            terraform plan -var-file="tfenvs/${{ matrix.environment }}/terraform.tfvars" -out=tfplan
+          if [ -f "tfenvs/${{ env.ENVIRONMENT }}/terraform.tfvars" ]; then
+            terraform plan -var-file="tfenvs/${{ env.ENVIRONMENT }}/terraform.tfvars" -out=tfplan
           else
             terraform plan -out=tfplan
           fi
@@ -386,26 +392,26 @@ jobs:
       - name: Create Deployment Directory
         if: ${{ steps.should_run.outputs.run == 'true' }}
         run: |
-          mkdir -p ${GITHUB_WORKSPACE}/deploy/${{ matrix.environment }}
+          mkdir -p ${GITHUB_WORKSPACE}/deploy/${{ env.ENVIRONMENT }}
       - name: Download Glue Job Artifact
         if: ${{ steps.should_run.outputs.run == 'true' }}
         uses: actions/download-artifact@v4
         with:
           name: glue-job-artifact
-          path: ${GITHUB_WORKSPACE}/deploy/${{ matrix.environment }}
+          path: ${GITHUB_WORKSPACE}/deploy/${{ env.ENVIRONMENT }}
 
       - name: Extract Artifacts
         if: ${{ steps.should_run.outputs.run == 'true' }}
         run: |
-          cd ${GITHUB_WORKSPACE}/deploy/${{ matrix.environment }}
+          cd ${GITHUB_WORKSPACE}/deploy/${{ env.ENVIRONMENT }}
           ls -R
       - name: Deploy Glue Jobs to S3
         if: ${{ steps.should_run.outputs.run == 'true' }}
         run: |
-          echo "Deploying Glue Jobs to ${{ matrix.environment }} environment (Account: ${{ env.ACCOUNT_ID }})"
-          aws s3 sync ${GITHUB_WORKSPACE}/deploy/${{ matrix.environment }}/ ${{ env.S3_BUCKET }}/scripts/ --delete
+          echo "Deploying Glue Jobs to ${{ env.ENVIRONMENT }} environment (Account: ${{ env.ACCOUNT_ID }})"
+          aws s3 sync ${GITHUB_WORKSPACE}/deploy/${{ env.ENVIRONMENT }}/ ${{ env.S3_BUCKET }}/scripts/ --delete
           # Register/update Glue Jobs
-          cd ${GITHUB_WORKSPACE}/deploy/${{ matrix.environment }}/
+          cd ${GITHUB_WORKSPACE}/deploy/${{ env.ENVIRONMENT }}/
           # Find all Python script files
           for script in $(find . -name "*.py"); do
             script_name=$(basename "$script" .py)
@@ -413,8 +419,8 @@ jobs:
             # Create or update Glue job
             echo "Registering Glue job: $script_name"
             aws glue create-job \
-              --name "$script_name-${{ matrix.environment }}" \
-              --role "AWSGlueServiceRole-${{ matrix.environment }}" \
+              --name "$script_name-${{ env.ENVIRONMENT }}" \
+              --role "AWSGlueServiceRole-${{ env.ENVIRONMENT }}" \
               --command "Name=glueetl,ScriptLocation=$script_path" \
               --max-retries 3 \
               --timeout 60 \
@@ -425,10 +431,10 @@ jobs:
                 "--enable-metrics": "true",
                 "--enable-continuous-cloudwatch-log": "true",
                 "--job-language": "python",
-                "--environment": "${{ matrix.environment }}"
+                "--environment": "${{ env.ENVIRONMENT }}"
               }' || aws glue update-job \
-              --job-name "$script_name-${{ matrix.environment }}" \
-              --job-update "Command={Name=glueetl,ScriptLocation=$script_path},Role=AWSGlueServiceRole-${{ matrix.environment }},MaxRetries=3,Timeout=60,GlueVersion=3.0,WorkerType=G.1X,NumberOfWorkers=10,DefaultArguments={\"--enable-metrics\": \"true\", \"--enable-continuous-cloudwatch-log\": \"true\", \"--job-language\": \"python\", \"--environment\": \"${{ matrix.environment }}\"}"
+              --job-name "$script_name-${{ env.ENVIRONMENT }}" \
+              --job-update "Command={Name=glueetl,ScriptLocation=$script_path},Role=AWSGlueServiceRole-${{ env.ENVIRONMENT }},MaxRetries=3,Timeout=60,GlueVersion=3.0,WorkerType=G.1X,NumberOfWorkers=10,DefaultArguments={\"--enable-metrics\": \"true\", \"--enable-continuous-cloudwatch-log\": \"true\", \"--job-language\": \"python\", \"--environment\": \"${{ env.ENVIRONMENT }}\"}"
           done
 
   deploy-to-qa:
@@ -438,10 +444,13 @@ jobs:
     if: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'push' && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/staging') }}
     env:
       ENVIRONMENT: qa
-      S3_BUCKET: ${{ env.S3_BUCKET_PREFIX_QA }}
-      ACCOUNT_ID: ${{ env.AWS_ACCOUNT_ID_QA }}
-      ROLE_ARN: arn:aws:iam::${{ env.AWS_ACCOUNT_ID_QA }}:role/${{ env.AWS_ROLE_NAME }}
     steps:
+      - name: Set environment-specific variables
+        run: |
+          echo "S3_BUCKET=${{ env.S3_BUCKET_PREFIX_QA }}" >> $GITHUB_ENV
+          echo "ACCOUNT_ID=${{ env.AWS_ACCOUNT_ID_QA }}" >> $GITHUB_ENV
+          echo "ROLE_ARN=arn:aws:iam::${{ env.AWS_ACCOUNT_ID_QA }}:role/${{ env.AWS_ROLE_NAME }}" >> $GITHUB_ENV
+      
       - name: Check if should run
         id: should_run
         run: |
@@ -485,7 +494,7 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Assume AWS Role for ${{ matrix.environment }}
+      - name: Assume AWS Role for ${{ env.ENVIRONMENT }}
         if: ${{ steps.should_run.outputs.run == 'true' }}
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -493,7 +502,7 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
           role-to-assume: ${{ env.ROLE_ARN }}
-          role-session-name: HarmonyGlueDeployment-${{ matrix.environment }}
+          role-session-name: HarmonyGlueDeployment-${{ env.ENVIRONMENT }}
           role-duration-seconds: 3600
 
       - name: Verify AWS Identity After Role Assumption
@@ -529,8 +538,8 @@ jobs:
         run: |
           cd ${TERRAFORM_DIR}
           # Kiểm tra nếu có thư mục tfenvs
-          if [ -d "tfenvs/${{ matrix.environment }}" ]; then
-            terraform init -backend-config="tfenvs/${{ matrix.environment }}/backend.hcl" -reconfigure
+          if [ -d "tfenvs/${{ env.ENVIRONMENT }}" ]; then
+            terraform init -backend-config="tfenvs/${{ env.ENVIRONMENT }}/backend.hcl" -reconfigure
           else
             terraform init -reconfigure
           fi
@@ -539,8 +548,8 @@ jobs:
         run: |
           cd ${TERRAFORM_DIR}
           # Kiểm tra nếu có file tfvars
-          if [ -f "tfenvs/${{ matrix.environment }}/terraform.tfvars" ]; then
-            terraform plan -var-file="tfenvs/${{ matrix.environment }}/terraform.tfvars" -out=tfplan
+          if [ -f "tfenvs/${{ env.ENVIRONMENT }}/terraform.tfvars" ]; then
+            terraform plan -var-file="tfenvs/${{ env.ENVIRONMENT }}/terraform.tfvars" -out=tfplan
           else
             terraform plan -out=tfplan
           fi
@@ -553,26 +562,26 @@ jobs:
       - name: Create Deployment Directory
         if: ${{ steps.should_run.outputs.run == 'true' }}
         run: |
-          mkdir -p ${GITHUB_WORKSPACE}/deploy/${{ matrix.environment }}
+          mkdir -p ${GITHUB_WORKSPACE}/deploy/${{ env.ENVIRONMENT }}
       - name: Download Glue Job Artifact
         if: ${{ steps.should_run.outputs.run == 'true' }}
         uses: actions/download-artifact@v4
         with:
           name: glue-job-artifact
-          path: ${GITHUB_WORKSPACE}/deploy/${{ matrix.environment }}
+          path: ${GITHUB_WORKSPACE}/deploy/${{ env.ENVIRONMENT }}
 
       - name: Extract Artifacts
         if: ${{ steps.should_run.outputs.run == 'true' }}
         run: |
-          cd ${GITHUB_WORKSPACE}/deploy/${{ matrix.environment }}
+          cd ${GITHUB_WORKSPACE}/deploy/${{ env.ENVIRONMENT }}
           ls -R
       - name: Deploy Glue Jobs to S3
         if: ${{ steps.should_run.outputs.run == 'true' }}
         run: |
-          echo "Deploying Glue Jobs to ${{ matrix.environment }} environment (Account: ${{ env.ACCOUNT_ID }})"
-          aws s3 sync ${GITHUB_WORKSPACE}/deploy/${{ matrix.environment }}/ ${{ env.S3_BUCKET }}/scripts/ --delete
+          echo "Deploying Glue Jobs to ${{ env.ENVIRONMENT }} environment (Account: ${{ env.ACCOUNT_ID }})"
+          aws s3 sync ${GITHUB_WORKSPACE}/deploy/${{ env.ENVIRONMENT }}/ ${{ env.S3_BUCKET }}/scripts/ --delete
           # Register/update Glue Jobs
-          cd ${GITHUB_WORKSPACE}/deploy/${{ matrix.environment }}/
+          cd ${GITHUB_WORKSPACE}/deploy/${{ env.ENVIRONMENT }}/
           # Find all Python script files
           for script in $(find . -name "*.py"); do
             script_name=$(basename "$script" .py)
@@ -580,8 +589,8 @@ jobs:
             # Create or update Glue job
             echo "Registering Glue job: $script_name"
             aws glue create-job \
-              --name "$script_name-${{ matrix.environment }}" \
-              --role "AWSGlueServiceRole-${{ matrix.environment }}" \
+              --name "$script_name-${{ env.ENVIRONMENT }}" \
+              --role "AWSGlueServiceRole-${{ env.ENVIRONMENT }}" \
               --command "Name=glueetl,ScriptLocation=$script_path" \
               --max-retries 3 \
               --timeout 60 \
@@ -592,10 +601,10 @@ jobs:
                 "--enable-metrics": "true",
                 "--enable-continuous-cloudwatch-log": "true",
                 "--job-language": "python",
-                "--environment": "${{ matrix.environment }}"
+                "--environment": "${{ env.ENVIRONMENT }}"
               }' || aws glue update-job \
-              --job-name "$script_name-${{ matrix.environment }}" \
-              --job-update "Command={Name=glueetl,ScriptLocation=$script_path},Role=AWSGlueServiceRole-${{ matrix.environment }},MaxRetries=3,Timeout=60,GlueVersion=3.0,WorkerType=G.1X,NumberOfWorkers=10,DefaultArguments={\"--enable-metrics\": \"true\", \"--enable-continuous-cloudwatch-log\": \"true\", \"--job-language\": \"python\", \"--environment\": \"${{ matrix.environment }}\"}"
+              --job-name "$script_name-${{ env.ENVIRONMENT }}" \
+              --job-update "Command={Name=glueetl,ScriptLocation=$script_path},Role=AWSGlueServiceRole-${{ env.ENVIRONMENT }},MaxRetries=3,Timeout=60,GlueVersion=3.0,WorkerType=G.1X,NumberOfWorkers=10,DefaultArguments={\"--enable-metrics\": \"true\", \"--enable-continuous-cloudwatch-log\": \"true\", \"--job-language\": \"python\", \"--environment\": \"${{ env.ENVIRONMENT }}\"}"
           done
 
   deploy-to-prd:
@@ -605,10 +614,13 @@ jobs:
     if: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'push' && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/staging') }}
     env:
       ENVIRONMENT: prd
-      S3_BUCKET: ${{ env.S3_BUCKET_PREFIX_PRD }}
-      ACCOUNT_ID: ${{ env.AWS_ACCOUNT_ID_PRD }}
-      ROLE_ARN: arn:aws:iam::${{ env.AWS_ACCOUNT_ID_PRD }}:role/${{ env.AWS_ROLE_NAME }}
     steps:
+      - name: Set environment-specific variables
+        run: |
+          echo "S3_BUCKET=${{ env.S3_BUCKET_PREFIX_PRD }}" >> $GITHUB_ENV
+          echo "ACCOUNT_ID=${{ env.AWS_ACCOUNT_ID_PRD }}" >> $GITHUB_ENV
+          echo "ROLE_ARN=arn:aws:iam::${{ env.AWS_ACCOUNT_ID_PRD }}:role/${{ env.AWS_ROLE_NAME }}" >> $GITHUB_ENV
+      
       - name: Check if should run
         id: should_run
         run: |
@@ -652,7 +664,7 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
 
-      - name: Assume AWS Role for ${{ matrix.environment }}
+      - name: Assume AWS Role for ${{ env.ENVIRONMENT }}
         if: ${{ steps.should_run.outputs.run == 'true' }}
         uses: aws-actions/configure-aws-credentials@v4
         with:
@@ -660,7 +672,7 @@ jobs:
           aws-secret-access-key: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
           aws-region: ${{ env.AWS_REGION }}
           role-to-assume: ${{ env.ROLE_ARN }}
-          role-session-name: HarmonyGlueDeployment-${{ matrix.environment }}
+          role-session-name: HarmonyGlueDeployment-${{ env.ENVIRONMENT }}
           role-duration-seconds: 3600
 
       - name: Verify AWS Identity After Role Assumption
@@ -696,8 +708,8 @@ jobs:
         run: |
           cd ${TERRAFORM_DIR}
           # Kiểm tra nếu có thư mục tfenvs
-          if [ -d "tfenvs/${{ matrix.environment }}" ]; then
-            terraform init -backend-config="tfenvs/${{ matrix.environment }}/backend.hcl" -reconfigure
+          if [ -d "tfenvs/${{ env.ENVIRONMENT }}" ]; then
+            terraform init -backend-config="tfenvs/${{ env.ENVIRONMENT }}/backend.hcl" -reconfigure
           else
             terraform init -reconfigure
           fi
@@ -706,8 +718,8 @@ jobs:
         run: |
           cd ${TERRAFORM_DIR}
           # Kiểm tra nếu có file tfvars
-          if [ -f "tfenvs/${{ matrix.environment }}/terraform.tfvars" ]; then
-            terraform plan -var-file="tfenvs/${{ matrix.environment }}/terraform.tfvars" -out=tfplan
+          if [ -f "tfenvs/${{ env.ENVIRONMENT }}/terraform.tfvars" ]; then
+            terraform plan -var-file="tfenvs/${{ env.ENVIRONMENT }}/terraform.tfvars" -out=tfplan
           else
             terraform plan -out=tfplan
           fi
@@ -720,26 +732,26 @@ jobs:
       - name: Create Deployment Directory
         if: ${{ steps.should_run.outputs.run == 'true' }}
         run: |
-          mkdir -p ${GITHUB_WORKSPACE}/deploy/${{ matrix.environment }}
+          mkdir -p ${GITHUB_WORKSPACE}/deploy/${{ env.ENVIRONMENT }}
       - name: Download Glue Job Artifact
         if: ${{ steps.should_run.outputs.run == 'true' }}
         uses: actions/download-artifact@v4
         with:
           name: glue-job-artifact
-          path: ${GITHUB_WORKSPACE}/deploy/${{ matrix.environment }}
+          path: ${GITHUB_WORKSPACE}/deploy/${{ env.ENVIRONMENT }}
 
       - name: Extract Artifacts
         if: ${{ steps.should_run.outputs.run == 'true' }}
         run: |
-          cd ${GITHUB_WORKSPACE}/deploy/${{ matrix.environment }}
+          cd ${GITHUB_WORKSPACE}/deploy/${{ env.ENVIRONMENT }}
           ls -R
       - name: Deploy Glue Jobs to S3
         if: ${{ steps.should_run.outputs.run == 'true' }}
         run: |
-          echo "Deploying Glue Jobs to ${{ matrix.environment }} environment (Account: ${{ env.ACCOUNT_ID }})"
-          aws s3 sync ${GITHUB_WORKSPACE}/deploy/${{ matrix.environment }}/ ${{ env.S3_BUCKET }}/scripts/ --delete
+          echo "Deploying Glue Jobs to ${{ env.ENVIRONMENT }} environment (Account: ${{ env.ACCOUNT_ID }})"
+          aws s3 sync ${GITHUB_WORKSPACE}/deploy/${{ env.ENVIRONMENT }}/ ${{ env.S3_BUCKET }}/scripts/ --delete
           # Register/update Glue Jobs
-          cd ${GITHUB_WORKSPACE}/deploy/${{ matrix.environment }}/
+          cd ${GITHUB_WORKSPACE}/deploy/${{ env.ENVIRONMENT }}/
           # Find all Python script files
           for script in $(find . -name "*.py"); do
             script_name=$(basename "$script" .py)
@@ -747,8 +759,8 @@ jobs:
             # Create or update Glue job
             echo "Registering Glue job: $script_name"
             aws glue create-job \
-              --name "$script_name-${{ matrix.environment }}" \
-              --role "AWSGlueServiceRole-${{ matrix.environment }}" \
+              --name "$script_name-${{ env.ENVIRONMENT }}" \
+              --role "AWSGlueServiceRole-${{ env.ENVIRONMENT }}" \
               --command "Name=glueetl,ScriptLocation=$script_path" \
               --max-retries 3 \
               --timeout 60 \
@@ -759,8 +771,8 @@ jobs:
                 "--enable-metrics": "true",
                 "--enable-continuous-cloudwatch-log": "true",
                 "--job-language": "python",
-                "--environment": "${{ matrix.environment }}"
+                "--environment": "${{ env.ENVIRONMENT }}"
               }' || aws glue update-job \
-              --job-name "$script_name-${{ matrix.environment }}" \
-              --job-update "Command={Name=glueetl,ScriptLocation=$script_path},Role=AWSGlueServiceRole-${{ matrix.environment }},MaxRetries=3,Timeout=60,GlueVersion=3.0,WorkerType=G.1X,NumberOfWorkers=10,DefaultArguments={\"--enable-metrics\": \"true\", \"--enable-continuous-cloudwatch-log\": \"true\", \"--job-language\": \"python\", \"--environment\": \"${{ matrix.environment }}\"}"
+              --job-name "$script_name-${{ env.ENVIRONMENT }}" \
+              --job-update "Command={Name=glueetl,ScriptLocation=$script_path},Role=AWSGlueServiceRole-${{ env.ENVIRONMENT }},MaxRetries=3,Timeout=60,GlueVersion=3.0,WorkerType=G.1X,NumberOfWorkers=10,DefaultArguments={\"--enable-metrics\": \"true\", \"--enable-continuous-cloudwatch-log\": \"true\", \"--job-language\": \"python\", \"--environment\": \"${{ env.ENVIRONMENT }}\"}"
           done
