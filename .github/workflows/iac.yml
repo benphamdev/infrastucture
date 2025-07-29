@@ -281,11 +281,11 @@ jobs:
             terraform plan -out=tfplan
           fi
 
-      - name: Terraform Apply
-        if: ${{ steps.should_run.outputs.run == 'true' && (inputs.action == 'apply' || github.event_name == 'push') }}
-        run: |
-          cd ${TERRAFORM_DIR}
-          terraform apply -auto-approve tfplan
+    #   - name: Terraform Apply
+    #     if: ${{ steps.should_run.outputs.run == 'true' && (inputs.action == 'apply' || github.event_name == 'push') }}
+    #     run: |
+    #       cd ${TERRAFORM_DIR}
+    #       terraform apply -auto-approve tfplan
 
       - name: Create Deployment Directory
         if: ${{ steps.should_run.outputs.run == 'true' }}
