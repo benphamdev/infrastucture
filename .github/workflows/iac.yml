@@ -128,7 +128,7 @@ jobs:
       - name: Publish Glue Job Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: glue-job-artifact-${{ env.DEPLOY_ENV }}
+          name: glue-job-artifact
           path: ${{ env.ARTIFACTS_DIR }}/glue-jobs.zip
           overwrite: true
 
@@ -153,6 +153,24 @@ jobs:
             requires_approval: true
 
     steps:
+      - name: Check if should run
+        id: should_run
+        run: |
+          # For workflow_dispatch, only run for the selected environment
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            if [ "${{ inputs.environment }}" == "${{ matrix.environment }}" ]; then
+              echo "Run this job for ${{ matrix.environment }}"
+              echo "run=true" >> $GITHUB_OUTPUT
+            else
+              echo "Skip job for ${{ matrix.environment }}"
+              echo "run=false" >> $GITHUB_OUTPUT
+            fi
+          else
+            # For automated push to dev/staging, run for all environments
+            echo "Run this job for ${{ matrix.environment }}"
+            echo "run=true" >> $GITHUB_OUTPUT
+          fi
+
       - name: Set environment-specific variables
         if: ${{ steps.should_run.outputs.run == 'true' }}
         run: |
@@ -172,24 +190,6 @@ jobs:
             echo "S3_BUCKET=${{ env.S3_BUCKET_PREFIX_PRD }}" >> $GITHUB_ENV
             echo "ACCOUNT_ID=${{ env.AWS_ACCOUNT_ID_PRD }}" >> $GITHUB_ENV
             echo "ROLE_ARN=arn:aws:iam::${{ env.AWS_ACCOUNT_ID_PRD }}:role/${{ env.AWS_ROLE_NAME }}" >> $GITHUB_ENV
-          fi
-
-      - name: Check if should run
-        id: should_run
-        run: |
-          # For workflow_dispatch, only run for the selected environment
-          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-            if [ "${{ inputs.environment }}" == "${{ matrix.environment }}" ]; then
-              echo "Run this job for ${{ matrix.environment }}"
-              echo "run=true" >> $GITHUB_OUTPUT
-            else
-              echo "Skip job for ${{ matrix.environment }}"
-              echo "run=false" >> $GITHUB_OUTPUT
-            fi
-          else
-            # For automated push to dev/staging, run for all environments
-            echo "Run this job for ${{ matrix.environment }}"
-            echo "run=true" >> $GITHUB_OUTPUT
           fi
 
       - name: Wait for approval (QA/PRD)
@@ -296,7 +296,7 @@ jobs:
         if: ${{ steps.should_run.outputs.run == 'true' }}
         uses: actions/download-artifact@v4
         with:
-          name: glue-job-artifact-${{ env.DEPLOY_ENV }}
+          name: glue-job-artifact
           path: ${GITHUB_WORKSPACE}/deploy/${{ matrix.environment }}
 
       - name: Extract Artifacts
