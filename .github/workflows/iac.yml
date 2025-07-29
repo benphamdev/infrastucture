@@ -151,7 +151,7 @@ jobs:
     name: Deploy Glue Job to DEV
     # needs: deploy-to-rnd
     runs-on: ubuntu-latest
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'push' && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/staging') }}
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'push' && (github.ref == 'refs/heads/main') }}
     env:
       ENVIRONMENT: dev
     steps:
@@ -234,7 +234,7 @@ jobs:
   #   name: Deploy Glue Job to QA
   #   needs: deploy-to-dev
   #   runs-on: ubuntu-latest
-  #   if: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'push' && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/staging') }}
+  #   if: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'push' && (github.ref == 'refs/heads/main') }}
   #   env:
   #     ENVIRONMENT: qa
   #   steps:
@@ -328,7 +328,7 @@ jobs:
   #   name: Deploy Glue Job to PRD
   #   needs: deploy-to-qa
   #   runs-on: ubuntu-latest
-  #   if: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'push' && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/staging') }}
+  #   if: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'push' && (github.ref == 'refs/heads/main') }}
   #   env:
   #     ENVIRONMENT: prd
   #   steps:
