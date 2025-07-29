@@ -1,7 +1,6 @@
 name: Deploy Glue Job
 
 env:
-  TF_VERSION: "1.12.0"
   AWS_REGION: ap-southeast-1
   CODE_SCRIPTS: platform/code/scripts
   # S3 bucket prefixes for different environments
@@ -137,29 +136,25 @@ jobs:
           echo "Testing S3 access"
           aws s3 ls ${{ env.S3_BUCKET }} || echo "Warning: S3 bucket access test failed"
 
-      - name: Create Deployment Directory
-        if: ${{ steps.should_run.outputs.run == 'true' }}
-        run: |
-          mkdir -p ${GITHUB_WORKSPACE}/deploy/${{ env.ENVIRONMENT }}
       - name: Download Glue Job Artifact
         if: ${{ steps.should_run.outputs.run == 'true' }}
         uses: actions/download-artifact@v4
         with:
           name: glue-job-artifact
-          path: ${GITHUB_WORKSPACE}/deploy/${{ env.ENVIRONMENT }}
+          path: ${GITHUB_WORKSPACE}/${CODE_SCRIPTS}
 
       - name: Extract Artifacts
         if: ${{ steps.should_run.outputs.run == 'true' }}
         run: |
-          cd ${GITHUB_WORKSPACE}/deploy/${{ env.ENVIRONMENT }}
+          cd ${GITHUB_WORKSPACE}/${CODE_SCRIPTS}
           ls -R
       - name: Deploy Glue Jobs to S3
         if: ${{ steps.should_run.outputs.run == 'true' }}
         run: |
           echo "Deploying Glue Jobs to ${{ env.ENVIRONMENT }} environment (Account: ${{ env.ACCOUNT_ID }})"
-          aws s3 sync ${GITHUB_WORKSPACE}/deploy/${{ env.ENVIRONMENT }}/ ${{ env.S3_BUCKET }}/scripts/ --delete
+          aws s3 sync ${GITHUB_WORKSPACE}/${CODE_SCRIPTS}/ ${{ env.S3_BUCKET }}/scripts/ --delete
           # Register/update Glue Jobs
-          cd ${GITHUB_WORKSPACE}/deploy/${{ env.ENVIRONMENT }}/
+          cd ${GITHUB_WORKSPACE}/${CODE_SCRIPTS}/
           # Find all Python script files
           for script in $(find . -name "*.py"); do
             script_name=$(basename "$script" .py)
@@ -250,29 +245,25 @@ jobs:
           echo "Testing S3 access"
           aws s3 ls ${{ env.S3_BUCKET }} || echo "Warning: S3 bucket access test failed"
 
-      - name: Create Deployment Directory
-        if: ${{ steps.should_run.outputs.run == 'true' }}
-        run: |
-          mkdir -p ${GITHUB_WORKSPACE}/deploy/${{ env.ENVIRONMENT }}
       - name: Download Glue Job Artifact
         if: ${{ steps.should_run.outputs.run == 'true' }}
         uses: actions/download-artifact@v4
         with:
           name: glue-job-artifact
-          path: ${GITHUB_WORKSPACE}/deploy/${{ env.ENVIRONMENT }}
+          path: ${GITHUB_WORKSPACE}/${CODE_SCRIPTS}
 
       - name: Extract Artifacts
         if: ${{ steps.should_run.outputs.run == 'true' }}
         run: |
-          cd ${GITHUB_WORKSPACE}/deploy/${{ env.ENVIRONMENT }}
+          cd ${GITHUB_WORKSPACE}/${CODE_SCRIPTS}
           ls -R
       - name: Deploy Glue Jobs to S3
         if: ${{ steps.should_run.outputs.run == 'true' }}
         run: |
           echo "Deploying Glue Jobs to ${{ env.ENVIRONMENT }} environment (Account: ${{ env.ACCOUNT_ID }})"
-          aws s3 sync ${GITHUB_WORKSPACE}/deploy/${{ env.ENVIRONMENT }}/ ${{ env.S3_BUCKET }}/scripts/ --delete
+          aws s3 sync ${GITHUB_WORKSPACE}/${CODE_SCRIPTS}/ ${{ env.S3_BUCKET }}/scripts/ --delete
           # Register/update Glue Jobs
-          cd ${GITHUB_WORKSPACE}/deploy/${{ env.ENVIRONMENT }}/
+          cd ${GITHUB_WORKSPACE}/${CODE_SCRIPTS}/
           # Find all Python script files
           for script in $(find . -name "*.py"); do
             script_name=$(basename "$script" .py)
@@ -374,29 +365,25 @@ jobs:
           echo "Testing S3 access"
           aws s3 ls ${{ env.S3_BUCKET }} || echo "Warning: S3 bucket access test failed"
 
-      - name: Create Deployment Directory
-        if: ${{ steps.should_run.outputs.run == 'true' }}
-        run: |
-          mkdir -p ${GITHUB_WORKSPACE}/deploy/${{ env.ENVIRONMENT }}
       - name: Download Glue Job Artifact
         if: ${{ steps.should_run.outputs.run == 'true' }}
         uses: actions/download-artifact@v4
         with:
           name: glue-job-artifact
-          path: ${GITHUB_WORKSPACE}/deploy/${{ env.ENVIRONMENT }}
+          path: ${GITHUB_WORKSPACE}/${CODE_SCRIPTS}
 
       - name: Extract Artifacts
         if: ${{ steps.should_run.outputs.run == 'true' }}
         run: |
-          cd ${GITHUB_WORKSPACE}/deploy/${{ env.ENVIRONMENT }}
+          cd ${GITHUB_WORKSPACE}/${CODE_SCRIPTS}
           ls -R
       - name: Deploy Glue Jobs to S3
         if: ${{ steps.should_run.outputs.run == 'true' }}
         run: |
           echo "Deploying Glue Jobs to ${{ env.ENVIRONMENT }} environment (Account: ${{ env.ACCOUNT_ID }})"
-          aws s3 sync ${GITHUB_WORKSPACE}/deploy/${{ env.ENVIRONMENT }}/ ${{ env.S3_BUCKET }}/scripts/ --delete
+          aws s3 sync ${GITHUB_WORKSPACE}/${CODE_SCRIPTS}/ ${{ env.S3_BUCKET }}/scripts/ --delete
           # Register/update Glue Jobs
-          cd ${GITHUB_WORKSPACE}/deploy/${{ env.ENVIRONMENT }}/
+          cd ${GITHUB_WORKSPACE}/${CODE_SCRIPTS}/
           # Find all Python script files
           for script in $(find . -name "*.py"); do
             script_name=$(basename "$script" .py)
@@ -498,31 +485,26 @@ jobs:
           echo "Testing S3 access"
           aws s3 ls ${{ env.S3_BUCKET }} || echo "Warning: S3 bucket access test failed"
 
-      - name: Create Deployment Directory
-        if: ${{ steps.should_run.outputs.run == 'true' }}
-        run: |
-          mkdir -p ${GITHUB_WORKSPACE}/deploy/${{ env.ENVIRONMENT }}
-
       - name: Download Glue Job Artifact
         if: ${{ steps.should_run.outputs.run == 'true' }}
         uses: actions/download-artifact@v4
         with:
           name: glue-job-artifact
-          path: ${GITHUB_WORKSPACE}/deploy/${{ env.ENVIRONMENT }}
+          path: ${GITHUB_WORKSPACE}/${CODE_SCRIPTS}
 
       - name: Extract Artifacts
         if: ${{ steps.should_run.outputs.run == 'true' }}
         run: |
-          cd ${GITHUB_WORKSPACE}/deploy/${{ env.ENVIRONMENT }}
+          cd ${GITHUB_WORKSPACE}/${CODE_SCRIPTS}
           ls -R
 
       - name: Deploy Glue Jobs to S3
         if: ${{ steps.should_run.outputs.run == 'true' }}
         run: |
           echo "Deploying Glue Jobs to ${{ env.ENVIRONMENT }} environment (Account: ${{ env.ACCOUNT_ID }})"
-          aws s3 sync ${GITHUB_WORKSPACE}/deploy/${{ env.ENVIRONMENT }}/ ${{ env.S3_BUCKET }}/scripts/ --delete
+          aws s3 sync ${GITHUB_WORKSPACE}/${CODE_SCRIPTS}/ ${{ env.S3_BUCKET }}/scripts/ --delete
           # Register/update Glue Jobs
-          cd ${GITHUB_WORKSPACE}/deploy/${{ env.ENVIRONMENT }}/
+          cd ${GITHUB_WORKSPACE}/${CODE_SCRIPTS}/
           # Find all Python script files
           for script in $(find . -name "*.py"); do
             script_name=$(basename "$script" .py)
