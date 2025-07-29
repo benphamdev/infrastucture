@@ -17,10 +17,10 @@ env:
   S3_BUCKET_ASSETS_QA: "s3://harmony-assets-qa-s3-v1"
   S3_BUCKET_ASSETS_PRD: "s3://harmony-assets-prd-s3-v1"
   # Role name to assume in each environment
-  AWS_ASSUME_ROLE_RND: "arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/HarmonyGlueDeploymentRole"
-  AWS_ASSUME_ROLE_DEV: "arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/HarmonyGlueDeploymentRole"
-  AWS_ASSUME_ROLE_QA: "arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/HarmonyGlueDeploymentRole"
-  AWS_ASSUME_ROLE_PRD: "arn:aws:iam::${{ secrets.AWS_ACCOUNT_ID }}:role/HarmonyGlueDeploymentRole"
+  AWS_ASSUME_ROLE_RND: "arn:aws:iam::787587782904:role/HarmonyGlueDeploymentRole"
+  AWS_ASSUME_ROLE_DEV: "arn:aws:iam::787587782904:role/HarmonyGlueDeploymentRole"
+  AWS_ASSUME_ROLE_QA: "arn:aws:iam::787587782904:role/HarmonyGlueDeploymentRole"
+  AWS_ASSUME_ROLE_PRD: "arn:aws:iam::787587782904:role/HarmonyGlueDeploymentRole"
 
 jobs:
   build-artifact:
