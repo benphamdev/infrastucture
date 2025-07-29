@@ -173,7 +173,7 @@ jobs:
             echo "ACCOUNT_ID=${{ env.AWS_ACCOUNT_ID_PRD }}" >> $GITHUB_ENV
             echo "ROLE_ARN=arn:aws:iam::${{ env.AWS_ACCOUNT_ID_PRD }}:role/${{ env.AWS_ROLE_NAME }}" >> $GITHUB_ENV
           fi
-      
+
       - name: Check if should run
         id: should_run
         run: |
@@ -252,6 +252,12 @@ jobs:
             exit 1
           fi
           echo "TERRAFORM_DIR=${TERRAFORM_DIR}" >> $GITHUB_ENV
+
+      - name: Setup Terraform
+        if: ${{ steps.should_run.outputs.run == 'true' }}
+        uses: hashicorp/setup-terraform@v3
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
 
       - name: Terraform Init
         if: ${{ steps.should_run.outputs.run == 'true' }}
