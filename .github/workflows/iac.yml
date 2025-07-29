@@ -7,9 +7,9 @@ env:
   ARTIFACTS_DIR: ${{ github.workspace }}/artifacts
   # S3 bucket prefixes for different environments
   S3_BUCKET_PREFIX_RND: "s3://harmony-assets-rnd-s3-v1"
-  S3_BUCKET_PREFIX_DEV: "s3://harmony-assets-dev-s3"
-  S3_BUCKET_PREFIX_QA: "s3://harmony-assets-qa-s3"
-  S3_BUCKET_PREFIX_PRD: "s3://harmony-assets-prd-s3"
+  S3_BUCKET_PREFIX_DEV: "s3://harmony-assets-dev-s3-v1"
+  S3_BUCKET_PREFIX_QA: "s3://harmony-assets-qa-s3-v1"
+  S3_BUCKET_PREFIX_PRD: "s3://harmony-assets-prd-s3-v1"
   # AWS Account IDs for role assumption
   AWS_ACCOUNT_ID_RND: ${{ secrets.AWS_ACCOUNT_ID_RND }}
   AWS_ACCOUNT_ID_DEV: ${{ secrets.AWS_ACCOUNT_ID_DEV }}
