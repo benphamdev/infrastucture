@@ -52,13 +52,15 @@ on:
   push:
     branches:
       - dev
+      - staging
     paths:
-      - "$CODE_SCRIPTS/**/*"
+      - "platform/code/scripts/**/*"
   pull_request:
     branches:
       - dev
+      - staging
     paths:
-      - "$CODE_SCRIPTS/**/*"
+      - "platform/code/scripts/**/*"
 
 jobs:
   build-artifact:
@@ -119,7 +121,7 @@ jobs:
         run: |
           cd ${GITHUB_WORKSPACE}
           mkdir -p ${ARTIFACTS_DIR}
-          zip -r ${ARTIFACTS_DIR}/glue-jobs.zip  $CODE_SCRIPTS/
+          zip -r ${ARTIFACTS_DIR}/glue-jobs.zip $CODE_SCRIPTS/
           echo "Packaged Glue jobs to ${ARTIFACTS_DIR}/glue-jobs.zip"
           ls -la ${ARTIFACTS_DIR}
 
@@ -134,7 +136,8 @@ jobs:
     name: Deploy Glue Job to ${{ matrix.environment }}
     needs: build-artifact
     runs-on: ubuntu-latest
-    if: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'push' && github.ref == 'refs/heads/main' }}
+    # Sửa điều kiện chạy để phù hợp với branch dev hoặc staging
+    if: ${{ github.event_name == 'workflow_dispatch' || github.event_name == 'push' && (github.ref == 'refs/heads/dev' || github.ref == 'refs/heads/staging') }}
     strategy:
       fail-fast: false
       matrix:
@@ -175,7 +178,7 @@ jobs:
               echo "run=false" >> $GITHUB_OUTPUT
             fi
           else
-            # For automated push to main, run for all environments
+            # For automated push to dev/staging, run for all environments
             echo "Run this job for ${{ matrix.environment }}"
             echo "run=true" >> $GITHUB_OUTPUT
           fi
@@ -231,22 +234,48 @@ jobs:
           echo "Testing S3 access"
           aws s3 ls ${{ matrix.s3_bucket }} || echo "Warning: S3 bucket access test failed"
 
+      # Kiểm tra thư mục terraform trước khi chạy
+      - name: Check Terraform Directory
+        if: ${{ steps.should_run.outputs.run == 'true' }}
+        run: |
+          if [ -d "${GITHUB_WORKSPACE}/terraform" ]; then
+            echo "Using root terraform directory"
+            TERRAFORM_DIR="${GITHUB_WORKSPACE}/terraform"
+          elif [ -d "${GITHUB_WORKSPACE}/platform/terraform" ]; then
+            echo "Using platform/terraform directory"
+            TERRAFORM_DIR="${GITHUB_WORKSPACE}/platform/terraform"
+          else
+            echo "No terraform directory found"
+            exit 1
+          fi
+          echo "TERRAFORM_DIR=${TERRAFORM_DIR}" >> $GITHUB_ENV
+
       - name: Terraform Init
         if: ${{ steps.should_run.outputs.run == 'true' }}
         run: |
-          cd ${GITHUB_WORKSPACE}/platform/terraform/04-monitoring
-          terraform init -backend-config="tfenvs/${{ matrix.environment }}/backend.hcl" -reconfigure
+          cd ${TERRAFORM_DIR}
+          # Kiểm tra nếu có thư mục tfenvs
+          if [ -d "tfenvs/${{ matrix.environment }}" ]; then
+            terraform init -backend-config="tfenvs/${{ matrix.environment }}/backend.hcl" -reconfigure
+          else
+            terraform init -reconfigure
+          fi
 
       - name: Terraform Plan
         if: ${{ steps.should_run.outputs.run == 'true' }}
         run: |
-          cd ${GITHUB_WORKSPACE}/platform/terraform/04-monitoring
-          terraform plan -var-file="tfenvs/${{ matrix.environment }}/terraform.tfvars" -out=tfplan
+          cd ${TERRAFORM_DIR}
+          # Kiểm tra nếu có file tfvars
+          if [ -f "tfenvs/${{ matrix.environment }}/terraform.tfvars" ]; then
+            terraform plan -var-file="tfenvs/${{ matrix.environment }}/terraform.tfvars" -out=tfplan
+          else
+            terraform plan -out=tfplan
+          fi
 
       - name: Terraform Apply
         if: ${{ steps.should_run.outputs.run == 'true' && (inputs.action == 'apply' || github.event_name == 'push') }}
         run: |
-          cd ${GITHUB_WORKSPACE}/platform/terraform/04-monitoring
+          cd ${TERRAFORM_DIR}
           terraform apply -auto-approve tfplan
 
       - name: Create Deployment Directory
@@ -302,26 +331,3 @@ jobs:
               --job-name "$script_name-${{ matrix.environment }}" \
               --job-update "Command={Name=glueetl,ScriptLocation=$script_path},Role=AWSGlueServiceRole-${{ matrix.environment }},MaxRetries=3,Timeout=60,GlueVersion=3.0,WorkerType=G.1X,NumberOfWorkers=10,DefaultArguments={\"--enable-metrics\": \"true\", \"--enable-continuous-cloudwatch-log\": \"true\", \"--job-language\": \"python\", \"--environment\": \"${{ matrix.environment }}\"}"
           done
-
-      # - name: Generate Deployment Report
-      #   if: ${{ steps.should_run.outputs.run == 'true' }}
-      #   run: |
-      #     mkdir -p ${GITHUB_WORKSPACE}/reports
-      #     cat > ${GITHUB_WORKSPACE}/reports/deployment-${{ matrix.environment }}.json << EOL
-      #     {
-      #       "environment": "${{ matrix.environment }}",
-      #       "deploymentTime": "$(date -u +"%Y-%m-%dT%H:%M:%SZ")",
-      #       "s3Location": "${{ matrix.s3_bucket }}/scripts/",
-      #       "jobsDeployed": [
-      #     $(cd ${GITHUB_WORKSPACE}/deploy/${{ matrix.environment }}/glue-scripts/platform/code/scripts/ && find . -name "*.py" | sed 's|./||' | sed 's|.py$||' | awk '{print "    \"" $0 "\"" (NR==n?"":",") }')
-      #       ]
-      #     }
-      #     EOL
-
-      # - name: Upload Deployment Report
-      #   if: ${{ steps.should_run.outputs.run == 'true' }}
-      #   uses: actions/upload-artifact@v4
-      #   with:
-      #     name: deployment-report-${{ matrix.environment }}
-      #     path: ${GITHUB_WORKSPACE}/reports/deployment-${{ matrix.environment }}.json
-      #     overwrite: true
