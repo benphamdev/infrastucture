@@ -1,3 +1,4 @@
+
 name: Deploy Glue Job
 
 env:
@@ -73,7 +74,6 @@ jobs:
           rm -rf ./* || true
           rm -rf ./.??* || true
           ls -la ./
-
       - name: Checkout Repository
         uses: actions/checkout@v4
         with:
@@ -85,14 +85,12 @@ jobs:
         run: |
           echo "DEPLOY_ENV=${{ inputs.environment }}" >> $GITHUB_ENV
           echo "Selected environment: ${{ inputs.environment }}"
-
       - name: Set Environment (push/PR)
         if: github.event_name == 'push' || github.event_name == 'pull_request'
         run: |
           # Default to 'rnd' for pushes/PRs unless specified
           echo "DEPLOY_ENV=rnd" >> $GITHUB_ENV
           echo "Selected default environment: rnd"
-
       - name: Setup Python
         uses: actions/setup-python@v4
         with:
@@ -102,21 +100,18 @@ jobs:
         run: |
           python -m pip install --upgrade pip
           pip install pytest pytest-cov pylint
-
       - name: Run Tests
         run: |
           cd ${GITHUB_WORKSPACE}/$CODE_SCRIPTS/
           echo "Running tests for Glue scripts"
           # Add test commands if you have any tests
           # pytest -xvs tests/
-
       - name: Lint Code
         run: |
           cd ${GITHUB_WORKSPACE}/$CODE_SCRIPTS/
           echo "Linting Python code"
           # Add linting if required
           # pylint --disable=C0111 *.py
-
       - name: Package Glue Jobs
         run: |
           cd ${GITHUB_WORKSPACE}
@@ -124,11 +119,10 @@ jobs:
           zip -r ${ARTIFACTS_DIR}/glue-jobs.zip $CODE_SCRIPTS/
           echo "Packaged Glue jobs to ${ARTIFACTS_DIR}/glue-jobs.zip"
           ls -la ${ARTIFACTS_DIR}
-
       - name: Publish Glue Job Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: glue-job-artifact
+          name: glue-job-artifact-${{ env.DEPLOY_ENV }}
           path: ${{ env.ARTIFACTS_DIR }}/glue-jobs.zip
           overwrite: true
 
@@ -153,24 +147,6 @@ jobs:
             requires_approval: true
 
     steps:
-      - name: Check if should run
-        id: should_run
-        run: |
-          # For workflow_dispatch, only run for the selected environment
-          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
-            if [ "${{ inputs.environment }}" == "${{ matrix.environment }}" ]; then
-              echo "Run this job for ${{ matrix.environment }}"
-              echo "run=true" >> $GITHUB_OUTPUT
-            else
-              echo "Skip job for ${{ matrix.environment }}"
-              echo "run=false" >> $GITHUB_OUTPUT
-            fi
-          else
-            # For automated push to dev/staging, run for all environments
-            echo "Run this job for ${{ matrix.environment }}"
-            echo "run=true" >> $GITHUB_OUTPUT
-          fi
-
       - name: Set environment-specific variables
         if: ${{ steps.should_run.outputs.run == 'true' }}
         run: |
@@ -191,7 +167,23 @@ jobs:
             echo "ACCOUNT_ID=${{ env.AWS_ACCOUNT_ID_PRD }}" >> $GITHUB_ENV
             echo "ROLE_ARN=arn:aws:iam::${{ env.AWS_ACCOUNT_ID_PRD }}:role/${{ env.AWS_ROLE_NAME }}" >> $GITHUB_ENV
           fi
-
+      - name: Check if should run
+        id: should_run
+        run: |
+          # For workflow_dispatch, only run for the selected environment
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            if [ "${{ inputs.environment }}" == "${{ matrix.environment }}" ]; then
+              echo "Run this job for ${{ matrix.environment }}"
+              echo "run=true" >> $GITHUB_OUTPUT
+            else
+              echo "Skip job for ${{ matrix.environment }}"
+              echo "run=false" >> $GITHUB_OUTPUT
+            fi
+          else
+            # For automated push to dev/staging, run for all environments
+            echo "Run this job for ${{ matrix.environment }}"
+            echo "run=true" >> $GITHUB_OUTPUT
+          fi
       - name: Wait for approval (QA/PRD)
         if: ${{ steps.should_run.outputs.run == 'true' && matrix.requires_approval == true }}
         uses: trstringer/manual-approval@v1
@@ -236,7 +228,6 @@ jobs:
           aws sts get-caller-identity
           echo "Testing S3 access"
           aws s3 ls ${{ env.S3_BUCKET }} || echo "Warning: S3 bucket access test failed"
-
       # Kiểm tra thư mục terraform trước khi chạy
       - name: Check Terraform Directory
         if: ${{ steps.should_run.outputs.run == 'true' }}
@@ -252,7 +243,6 @@ jobs:
             exit 1
           fi
           echo "TERRAFORM_DIR=${TERRAFORM_DIR}" >> $GITHUB_ENV
-
       - name: Setup Terraform
         if: ${{ steps.should_run.outputs.run == 'true' }}
         uses: hashicorp/setup-terraform@v3
@@ -269,7 +259,6 @@ jobs:
           else
             terraform init -reconfigure
           fi
-
       - name: Terraform Plan
         if: ${{ steps.should_run.outputs.run == 'true' }}
         run: |
@@ -280,7 +269,6 @@ jobs:
           else
             terraform plan -out=tfplan
           fi
-
     #   - name: Terraform Apply
     #     if: ${{ steps.should_run.outputs.run == 'true' && (inputs.action == 'apply' || github.event_name == 'push') }}
     #     run: |
@@ -291,12 +279,11 @@ jobs:
         if: ${{ steps.should_run.outputs.run == 'true' }}
         run: |
           mkdir -p ${GITHUB_WORKSPACE}/deploy/${{ matrix.environment }}
-
       - name: Download Glue Job Artifact
         if: ${{ steps.should_run.outputs.run == 'true' }}
         uses: actions/download-artifact@v4
         with:
-          name: glue-job-artifact
+          name: glue-job-artifact-${{ env.DEPLOY_ENV }}
           path: ${GITHUB_WORKSPACE}/deploy/${{ matrix.environment }}
 
       - name: Extract Artifacts
@@ -305,21 +292,17 @@ jobs:
           cd ${GITHUB_WORKSPACE}/deploy/${{ matrix.environment }}
           unzip glue-jobs.zip -d glue-scripts
           ls -R glue-scripts
-
       - name: Deploy Glue Jobs to S3
         if: ${{ steps.should_run.outputs.run == 'true' }}
         run: |
           echo "Deploying Glue Jobs to ${{ matrix.environment }} environment (Account: ${{ env.ACCOUNT_ID }})"
           aws s3 sync ${GITHUB_WORKSPACE}/deploy/${{ matrix.environment }}/glue-scripts/$CODE_SCRIPTS/ ${{ env.S3_BUCKET }}/scripts/ --delete
-
           # Register/update Glue Jobs
           cd ${GITHUB_WORKSPACE}/deploy/${{ matrix.environment }}/glue-scripts/$CODE_SCRIPTS/
-
           # Find all Python script files
           for script in $(find . -name "*.py"); do
             script_name=$(basename "$script" .py)
             script_path="${{ env.S3_BUCKET }}/scripts/${script#./}"
-
             # Create or update Glue job
             echo "Registering Glue job: $script_name"
             aws glue create-job \
